@@ -1,0 +1,380 @@
+openapi: 3.0.3
+info:
+  title: Talent Mesh Agent Service API
+  description: |
+    Internal API for managing AI Agent Pods lifecycle and capacity.
+    **Note:** This is an internal API, not exposed publicly.
+  version: 3.0.0
+
+servers:
+  - url: http://agent-service:3008/api/v1
+    description: Internal service
+
+tags:
+  - name: Pods
+    description: AI Agent Pod lifecycle management
+  - name: Capacity
+    description: Cluster capacity management
+  - name: Queue
+    description: Assessment queue management
+  - name: Sessions
+    description: Assessment session management (hybrid AI+Human)
+
+paths:
+  /pods:
+    get:
+      tags:
+        - Pods
+      summary: List all AI Agent Pods
+      operationId: listPods
+      responses:
+        '200':
+          description: List of pods
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Pod'
+
+  /pods/{pod_id}:
+    get:
+      tags:
+        - Pods
+      summary: Get pod status
+      operationId: getPod
+      parameters:
+        - $ref: '#/components/parameters/PodId'
+      responses:
+        '200':
+          description: Pod status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pod'
+
+  /pods/{pod_id}/metrics:
+    get:
+      tags:
+        - Pods
+      summary: Get pod performance metrics
+      operationId: getPodMetrics
+      parameters:
+        - $ref: '#/components/parameters/PodId'
+      responses:
+        '200':
+          description: Pod metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PodMetrics'
+
+  /pods/scale:
+    post:
+      tags:
+        - Pods
+      summary: Trigger manual scaling
+      operationId: scalePods
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                target_pods:
+                  type: integer
+                  minimum: 1
+                  maximum: 10
+      responses:
+        '200':
+          description: Scaling triggered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current_pods:
+                    type: integer
+                  target_pods:
+                    type: integer
+                  scaling_in_progress:
+                    type: boolean
+
+  /capacity:
+    get:
+      tags:
+        - Capacity
+      summary: Get cluster capacity
+      operationId: getCapacity
+      responses:
+        '200':
+          description: Cluster capacity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterCapacity'
+
+  /capacity/forecast:
+    get:
+      tags:
+        - Capacity
+      summary: Get capacity forecast
+      operationId: getCapacityForecast
+      parameters:
+        - name: hours_ahead
+          in: query
+          schema:
+            type: integer
+            default: 24
+      responses:
+        '200':
+          description: Capacity forecast
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityForecast'
+
+  /queue:
+    get:
+      tags:
+        - Queue
+      summary: Get queue status
+      operationId: getQueueStatus
+      responses:
+        '200':
+          description: Queue status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueStatus'
+
+  /queue/assign:
+    post:
+      tags:
+        - Queue
+      summary: Assign assessment to pod
+      operationId: assignAssessment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - assessment_id
+              properties:
+                assessment_id:
+                  type: string
+                  format: uuid
+                booking_id:
+                  type: string
+                  format: uuid
+                linkedin_id:
+                  type: string
+      responses:
+        '200':
+          description: Assignment result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assigned:
+                    type: boolean
+                  pod_id:
+                    type: string
+                  queue_position:
+                    type: integer
+
+  /session/{session_id}/add-human:
+    post:
+      tags:
+        - Sessions
+      summary: Add human interviewer to session
+      operationId: addHumanInterviewer
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - user_id
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Human interviewer added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id:
+                    type: string
+                  human_id:
+                    type: string
+                  webrtc_join_url:
+                    type: string
+
+  /session/{session_id}/human/{human_id}:
+    delete:
+      tags:
+        - Sessions
+      summary: Remove human interviewer from session
+      operationId: removeHumanInterviewer
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: human_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Human interviewer removed
+
+components:
+  parameters:
+    PodId:
+      name: pod_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    Pod:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        k8s_pod_name:
+          type: string
+        k8s_node:
+          type: string
+        status:
+          type: string
+          enum: [pending, ready, busy, draining, terminated]
+        current_assessment_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        last_heartbeat:
+          type: string
+          format: date-time
+        assessments_completed:
+          type: integer
+
+    PodMetrics:
+      type: object
+      properties:
+        pod_id:
+          type: string
+        total_sessions:
+          type: integer
+        successful_sessions:
+          type: integer
+        failed_sessions:
+          type: integer
+        performance:
+          type: object
+          properties:
+            avg_stt_latency_ms:
+              type: number
+            avg_tts_latency_ms:
+              type: number
+            avg_llm_latency_ms:
+              type: number
+            avg_total_response_latency_ms:
+              type: number
+        resource_usage:
+          type: object
+          properties:
+            cpu_percent:
+              type: number
+            memory_mb:
+              type: integer
+
+    ClusterCapacity:
+      type: object
+      properties:
+        total_pods:
+          type: integer
+        ready_pods:
+          type: integer
+        busy_pods:
+          type: integer
+        draining_pods:
+          type: integer
+        queue_length:
+          type: integer
+        utilization_percent:
+          type: number
+        max_concurrent_assessments:
+          type: integer
+
+    CapacityForecast:
+      type: object
+      properties:
+        forecasts:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              estimated_available_pods:
+                type: integer
+              estimated_queue_length:
+                type: integer
+
+    QueueStatus:
+      type: object
+      properties:
+        length:
+          type: integer
+        oldest_entry_age_seconds:
+          type: integer
+        estimated_wait_minutes:
+          type: integer
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              assessment_id:
+                type: string
+              linkedin_id:
+                type: string
+              queued_at:
+                type: string
+                format: date-time
+              position:
+                type: integer

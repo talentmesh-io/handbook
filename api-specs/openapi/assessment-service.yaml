@@ -1,0 +1,1230 @@
+openapi: 3.0.3
+info:
+  title: Talent Mesh Assessment Service API
+  description: |
+    Assessment configuration, template management, and assessment execution for Talent Mesh.
+
+    ## Retake Policy
+    - Candidates can retake assessments after a **2-week cooldown period**
+    - Maximum of **3 retakes** allowed per assessment type
+    - Retake eligibility is automatically tracked and enforced
+
+    ## Brain Dumper Detection
+    - All assessments are monitored for signs of memorized responses
+    - Brain dumper detection uses pattern analysis and response timing
+    - Flagged assessments are marked for manual review
+
+    ## Version History
+    - **2.0.0** (2026-01-03): Added retake rules enforcement, brain dumper detection, and assessment history endpoints.
+    - **1.0.0** (2025-01-01): Initial release with basic assessment and template management.
+  version: 2.0.0
+  contact:
+    name: API Support
+    email: api@talentmesh.io
+
+servers:
+  - url: https://api.talentmesh.io/api/v2
+    description: Production
+  - url: https://api.staging.talentmesh.io/api/v2
+    description: Staging
+  - url: http://localhost:3003/api/v2
+    description: Development
+
+tags:
+  - name: Types
+    description: Assessment type catalog
+  - name: Templates
+    description: Assessment templates
+  - name: Assessments
+    description: Assessment instances
+  - name: Results
+    description: Assessment results
+  - name: History
+    description: Assessment history and eligibility
+
+paths:
+  /assessments/types:
+    get:
+      tags:
+        - Types
+      summary: List assessment types
+      operationId: listTypes
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Assessment types
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AssessmentType'
+
+  /assessments/templates:
+    get:
+      tags:
+        - Templates
+      summary: List templates
+      operationId: listTemplates
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Templates list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TemplateSummary'
+    post:
+      tags:
+        - Templates
+      summary: Create template
+      operationId: createTemplate
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateCreate'
+      responses:
+        '201':
+          description: Template created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+
+  /assessments/templates/{template_id}:
+    get:
+      tags:
+        - Templates
+      summary: Get template
+      operationId: getTemplate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '200':
+          description: Template details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+    put:
+      tags:
+        - Templates
+      summary: Update template
+      operationId: updateTemplate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateUpdate'
+      responses:
+        '200':
+          description: Template updated
+
+  /assessments:
+    get:
+      tags:
+        - Assessments
+      summary: List assessments
+      operationId: listAssessments
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [scheduled, in_progress, completed, abandoned, no_show, flagged]
+        - name: user_id
+          in: query
+          schema:
+            type: string
+        - name: flagged
+          in: query
+          description: Filter by brain dumper flag status
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Assessments list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AssessmentSummary'
+                  meta:
+                    $ref: '#/components/schemas/Pagination'
+    post:
+      tags:
+        - Assessments
+      summary: Schedule new assessment
+      description: |
+        Schedule a new assessment for a candidate. The system will automatically
+        check retake eligibility based on the 2-week cooldown and 3-retake limit.
+      operationId: scheduleAssessment
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssessmentScheduleRequest'
+      responses:
+        '201':
+          description: Assessment scheduled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assessment'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Retake not allowed (cooldown or max retakes exceeded)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetakeNotAllowedError'
+
+  /assessments/{assessment_id}:
+    get:
+      tags:
+        - Assessments
+      summary: Get assessment details
+      operationId: getAssessment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AssessmentId'
+      responses:
+        '200':
+          description: Assessment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Assessment'
+
+  /assessments/{assessment_id}/results:
+    get:
+      tags:
+        - Results
+      summary: Get assessment results
+      operationId: getResults
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AssessmentId'
+      responses:
+        '200':
+          description: Assessment results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentResults'
+        '404':
+          description: Assessment not found or not scored
+
+  /assessments/{assessment_id}/transcript:
+    get:
+      tags:
+        - Results
+      summary: Get assessment transcript
+      operationId: getTranscript
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AssessmentId'
+      responses:
+        '200':
+          description: Assessment transcript
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transcript'
+
+  /assessments/{assessment_id}/recording:
+    get:
+      tags:
+        - Results
+      summary: Get recording URL
+      operationId: getRecording
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AssessmentId'
+      responses:
+        '200':
+          description: Signed recording URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                  expires_at:
+                    type: string
+                    format: date-time
+        '404':
+          description: Recording not available
+
+  /assessments/{assessment_id}/flag:
+    post:
+      tags:
+        - Results
+      summary: Flag assessment for review
+      description: Manually flag an assessment for brain dumper review
+      operationId: flagAssessment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AssessmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  description: Reason for flagging
+                  enum: [suspected_brain_dump, suspicious_timing, external_assistance, other]
+                notes:
+                  type: string
+                  description: Additional notes about the flag
+      responses:
+        '200':
+          description: Assessment flagged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flagged:
+                    type: boolean
+                  flagged_at:
+                    type: string
+                    format: date-time
+                  flagged_by:
+                    type: string
+        '404':
+          description: Assessment not found
+
+  /assessments/{assessment_id}/review:
+    post:
+      tags:
+        - Results
+      summary: Submit review decision
+      description: Submit a review decision for a flagged assessment
+      operationId: reviewAssessment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AssessmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - decision
+              properties:
+                decision:
+                  type: string
+                  enum: [valid, invalid, requires_retake]
+                notes:
+                  type: string
+                  description: Review notes
+      responses:
+        '200':
+          description: Review submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assessment_id:
+                    type: string
+                  decision:
+                    type: string
+                  reviewed_at:
+                    type: string
+                    format: date-time
+                  reviewed_by:
+                    type: string
+        '404':
+          description: Assessment not found
+
+  /assessments/parse-jd:
+    post:
+      tags:
+        - Templates
+      summary: Parse job description
+      operationId: parseJobDescription
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - job_description
+              properties:
+                job_description:
+                  type: string
+      responses:
+        '200':
+          description: Parsed JD with suggestions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JDAnalysis'
+
+  # Assessment History Endpoints
+  /assessments/history/user/{user_id}:
+    get:
+      tags:
+        - History
+      summary: Get user's assessment history
+      description: |
+        Returns complete assessment history for a user, including all attempts,
+        scores, and retake information.
+      operationId: getUserAssessmentHistory
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - name: type
+          in: query
+          description: Filter by assessment type
+          schema:
+            type: string
+        - name: include_details
+          in: query
+          description: Include detailed results for each assessment
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Assessment history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AssessmentHistoryItem'
+                  meta:
+                    $ref: '#/components/schemas/Pagination'
+                  summary:
+                    $ref: '#/components/schemas/UserAssessmentSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: User not found
+
+  /assessments/eligibility/{user_id}:
+    get:
+      tags:
+        - History
+      summary: Check retake eligibility
+      description: |
+        Check if a user is eligible to retake a specific assessment type.
+        Returns eligibility status, remaining retakes, and cooldown information.
+      operationId: checkRetakeEligibility
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - name: type
+          in: query
+          required: true
+          description: Assessment type to check eligibility for
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Eligibility status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetakeEligibility'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: User not found
+
+  /assessments/history/type/{assessment_type}:
+    get:
+      tags:
+        - History
+      summary: Get assessment history by type
+      description: |
+        Returns assessment history for a specific type, across all users.
+        Useful for analytics and reviewing patterns.
+      operationId: getAssessmentHistoryByType
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: assessment_type
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: include_flagged
+          in: query
+          description: Include flagged assessments
+          schema:
+            type: boolean
+            default: true
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Assessment history by type
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AssessmentHistoryItem'
+                  meta:
+                    $ref: '#/components/schemas/Pagination'
+                  analytics:
+                    $ref: '#/components/schemas/TypeAnalytics'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    TemplateId:
+      name: template_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AssessmentId:
+      name: assessment_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+    PerPage:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        default: 20
+
+  schemas:
+    AssessmentType:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        duration_minutes:
+          type: integer
+        topics:
+          type: array
+          items:
+            type: string
+        enabled:
+          type: boolean
+        retake_policy:
+          $ref: '#/components/schemas/RetakePolicy'
+
+    RetakePolicy:
+      type: object
+      description: Retake rules for this assessment type
+      properties:
+        cooldown_days:
+          type: integer
+          description: Days before retake is allowed
+          default: 14
+        max_retakes:
+          type: integer
+          description: Maximum number of retakes allowed
+          default: 3
+        score_improvement_required:
+          type: boolean
+          description: Whether score improvement is tracked
+          default: false
+
+    TemplateSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        is_default:
+          type: boolean
+        question_count:
+          type: integer
+
+    Template:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        description:
+          type: string
+        is_default:
+          type: boolean
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateSection'
+        scoring:
+          $ref: '#/components/schemas/ScoringConfig'
+        created_at:
+          type: string
+          format: date-time
+
+    TemplateSection:
+      type: object
+      properties:
+        name:
+          type: string
+        duration_minutes:
+          type: integer
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Question'
+
+    Question:
+      type: object
+      properties:
+        id:
+          type: string
+        topic:
+          type: string
+        question:
+          type: string
+        difficulty:
+          type: string
+          enum: [easy, medium, hard]
+        expected_answer:
+          type: string
+        follow_up_triggers:
+          type: array
+          items:
+            type: object
+            properties:
+              condition:
+                type: string
+              follow_up:
+                type: string
+
+    TemplateCreate:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        description:
+          type: string
+        clone_from:
+          type: string
+          format: uuid
+
+    TemplateUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateSection'
+        scoring:
+          $ref: '#/components/schemas/ScoringConfig'
+
+    ScoringConfig:
+      type: object
+      properties:
+        dimensions:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              weight:
+                type: number
+        pass_threshold:
+          type: integer
+
+    AssessmentScheduleRequest:
+      type: object
+      required:
+        - user_id
+        - type
+        - scheduled_at
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: Assessment type ID
+        template_id:
+          type: string
+          format: uuid
+          description: Optional specific template (uses default if not provided)
+        scheduled_at:
+          type: string
+          format: date-time
+        organization_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+          description: Optional job ID this assessment is for
+        force_retake:
+          type: boolean
+          default: false
+          description: Force retake even during cooldown (admin only)
+
+    AssessmentSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        candidate_name:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+        score:
+          type: integer
+        passed:
+          type: boolean
+        scheduled_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        attempt_number:
+          type: integer
+          description: Which attempt this is (1 = first, 2 = first retake, etc.)
+        brain_dumper_flagged:
+          type: boolean
+          description: Whether this assessment was flagged for brain dumper detection
+        brain_dumper_score:
+          type: number
+          format: float
+          description: Brain dumper likelihood score (0-1)
+
+    Assessment:
+      type: object
+      properties:
+        id:
+          type: string
+        user_id:
+          type: string
+        organization_id:
+          type: string
+        type:
+          type: string
+        template_id:
+          type: string
+        status:
+          type: string
+          enum: [scheduled, in_progress, completed, abandoned, no_show, flagged]
+        scheduled_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        duration_minutes:
+          type: integer
+        questions_answered:
+          type: integer
+        has_recording:
+          type: boolean
+        attempt_number:
+          type: integer
+          description: Which attempt this is (1 = first, 2 = first retake, etc.)
+        retake_info:
+          $ref: '#/components/schemas/RetakeInfo'
+        brain_dumper_detection:
+          $ref: '#/components/schemas/BrainDumperDetection'
+
+    RetakeInfo:
+      type: object
+      description: Information about retakes for this assessment
+      properties:
+        is_retake:
+          type: boolean
+        previous_attempts:
+          type: integer
+        remaining_retakes:
+          type: integer
+        previous_best_score:
+          type: integer
+        cooldown_expires_at:
+          type: string
+          format: date-time
+          description: When the next retake becomes available (if in cooldown)
+
+    BrainDumperDetection:
+      type: object
+      description: Brain dumper detection results
+      properties:
+        flagged:
+          type: boolean
+          description: Whether this assessment was flagged as potential brain dump
+        score:
+          type: number
+          format: float
+          description: Brain dumper likelihood score (0-1, higher = more likely)
+        indicators:
+          type: array
+          description: Detected indicators of brain dumping
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [rapid_response, pattern_match, verbatim_answer, unnatural_timing, external_lookup]
+              description:
+                type: string
+              confidence:
+                type: number
+                format: float
+              timestamp:
+                type: string
+                format: date-time
+        reviewed:
+          type: boolean
+          description: Whether this flag has been manually reviewed
+        review_decision:
+          type: string
+          enum: [valid, invalid, requires_retake]
+          description: Manual review decision (if reviewed)
+        reviewed_by:
+          type: string
+        reviewed_at:
+          type: string
+          format: date-time
+
+    AssessmentResults:
+      type: object
+      properties:
+        assessment_id:
+          type: string
+        overall_score:
+          type: integer
+        passed:
+          type: boolean
+        dimensions:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              score:
+                type: integer
+              weight:
+                type: number
+        per_topic:
+          type: object
+          additionalProperties:
+            type: integer
+        sentiment_summary:
+          type: object
+          properties:
+            confidence:
+              type: number
+            stress:
+              type: number
+            key_moments:
+              type: array
+              items:
+                type: object
+        justification:
+          type: string
+        scored_at:
+          type: string
+          format: date-time
+        brain_dumper_detection:
+          $ref: '#/components/schemas/BrainDumperDetection'
+        improvement_from_previous:
+          type: object
+          description: Score improvement from previous attempt (if retake)
+          properties:
+            overall_change:
+              type: integer
+            dimensions:
+              type: object
+              additionalProperties:
+                type: integer
+
+    Transcript:
+      type: object
+      properties:
+        assessment_id:
+          type: string
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+                enum: [ai, candidate]
+              content:
+                type: string
+              timestamp:
+                type: string
+                format: date-time
+              response_time_ms:
+                type: integer
+                description: Time taken to respond (for candidate entries)
+
+    JDAnalysis:
+      type: object
+      properties:
+        extracted_skills:
+          type: array
+          items:
+            type: string
+        required_experience:
+          type: integer
+        suggested_assessment_types:
+          type: array
+          items:
+            type: string
+        suggested_focus_areas:
+          type: array
+          items:
+            type: string
+
+    # Assessment History Schemas
+    AssessmentHistoryItem:
+      type: object
+      properties:
+        assessment_id:
+          type: string
+        type:
+          type: string
+        type_name:
+          type: string
+        user_id:
+          type: string
+        user_name:
+          type: string
+        status:
+          type: string
+        score:
+          type: integer
+        passed:
+          type: boolean
+        attempt_number:
+          type: integer
+        scheduled_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        brain_dumper_flagged:
+          type: boolean
+        brain_dumper_score:
+          type: number
+          format: float
+        review_status:
+          type: string
+          enum: [not_flagged, pending_review, reviewed]
+        details:
+          $ref: '#/components/schemas/AssessmentResults'
+
+    UserAssessmentSummary:
+      type: object
+      description: Summary statistics for user's assessment history
+      properties:
+        total_assessments:
+          type: integer
+        completed_assessments:
+          type: integer
+        passed_assessments:
+          type: integer
+        average_score:
+          type: number
+          format: float
+        flagged_assessments:
+          type: integer
+        types_completed:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              type_name:
+                type: string
+              attempts:
+                type: integer
+              best_score:
+                type: integer
+              last_attempt:
+                type: string
+                format: date-time
+
+    RetakeEligibility:
+      type: object
+      properties:
+        eligible:
+          type: boolean
+          description: Whether the user can currently retake this assessment
+        assessment_type:
+          type: string
+        previous_attempts:
+          type: integer
+        max_retakes:
+          type: integer
+        remaining_retakes:
+          type: integer
+        cooldown_days:
+          type: integer
+        in_cooldown:
+          type: boolean
+          description: Whether currently in cooldown period
+        cooldown_expires_at:
+          type: string
+          format: date-time
+          description: When cooldown period ends (if in cooldown)
+        last_attempt:
+          type: object
+          properties:
+            assessment_id:
+              type: string
+            completed_at:
+              type: string
+              format: date-time
+            score:
+              type: integer
+        ineligibility_reason:
+          type: string
+          enum: [max_retakes_exceeded, in_cooldown, no_previous_attempt]
+          description: Reason for ineligibility (if not eligible)
+
+    TypeAnalytics:
+      type: object
+      description: Analytics for assessment type
+      properties:
+        total_assessments:
+          type: integer
+        completion_rate:
+          type: number
+          format: float
+        average_score:
+          type: number
+          format: float
+        pass_rate:
+          type: number
+          format: float
+        flag_rate:
+          type: number
+          format: float
+          description: Percentage of assessments flagged for brain dumping
+        average_duration_minutes:
+          type: number
+          format: float
+        score_distribution:
+          type: object
+          properties:
+            '0-20':
+              type: integer
+            '21-40':
+              type: integer
+            '41-60':
+              type: integer
+            '61-80':
+              type: integer
+            '81-100':
+              type: integer
+
+    RetakeNotAllowedError:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum: [RETAKE_COOLDOWN, MAX_RETAKES_EXCEEDED]
+            message:
+              type: string
+            details:
+              type: object
+              properties:
+                previous_attempts:
+                  type: integer
+                max_retakes:
+                  type: integer
+                cooldown_days:
+                  type: integer
+                cooldown_expires_at:
+                  type: string
+                  format: date-time
+                next_eligible_date:
+                  type: string
+                  format: date
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: AUTH_TOKEN_MISSING
+              message: Authentication required
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+security:
+  - bearerAuth: []

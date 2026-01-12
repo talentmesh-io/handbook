@@ -1,0 +1,795 @@
+openapi: 3.0.3
+info:
+  title: Talent Mesh Matching Service API
+  description: |
+    Job-candidate matching and cost-of-living comparison service for Talent Mesh.
+
+    This service provides:
+    - Intelligent job-candidate matching based on assessment results and profiles
+    - Cost-of-living data for salary negotiation and relocation decisions
+    - Net compensation benefit calculations across different locations
+
+    ## Version History
+    - **2.0.0** (2026-01-03): Initial release with matching and cost-of-living endpoints.
+  version: 2.0.0
+  contact:
+    name: API Support
+    email: api@talentmesh.io
+
+servers:
+  - url: https://api.talentmesh.io/api/v2
+    description: Production
+  - url: https://api.staging.talentmesh.io/api/v2
+    description: Staging
+  - url: http://localhost:3007/api/v2
+    description: Development
+
+tags:
+  - name: Matches
+    description: Job-candidate matching endpoints
+  - name: Cost of Living
+    description: Cost-of-living data and comparisons
+
+paths:
+  /matches/candidates/{candidate_id}:
+    get:
+      tags:
+        - Matches
+      summary: Get job matches for candidate
+      description: |
+        Returns a list of job opportunities that match the candidate's profile,
+        skills, and assessment results. Matches are ranked by compatibility score.
+      operationId: getJobMatchesForCandidate
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CandidateId'
+        - name: min_score
+          in: query
+          description: Minimum match score (0-100)
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100
+            default: 50
+        - name: location
+          in: query
+          description: Filter by job location (city name or remote)
+          schema:
+            type: string
+        - name: remote_only
+          in: query
+          description: Only return remote positions
+          schema:
+            type: boolean
+            default: false
+        - name: salary_min
+          in: query
+          description: Minimum salary (in USD)
+          schema:
+            type: integer
+        - name: include_cost_adjusted
+          in: query
+          description: Include cost-of-living adjusted salary comparisons
+          schema:
+            type: boolean
+            default: true
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: List of matching jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/JobMatch'
+                  meta:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Candidate not found
+
+  /matches/jobs/{job_id}:
+    get:
+      tags:
+        - Matches
+      summary: Get candidate matches for job
+      description: |
+        Returns a list of candidates that match the job requirements based on their
+        assessment results, skills, and experience. Matches are ranked by compatibility score.
+      operationId: getCandidateMatchesForJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - name: min_score
+          in: query
+          description: Minimum match score (0-100)
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100
+            default: 50
+        - name: status
+          in: query
+          description: Filter by candidate status
+          schema:
+            type: string
+            enum: [active, passive, not_looking]
+        - name: assessment_required
+          in: query
+          description: Only include candidates with completed assessments
+          schema:
+            type: boolean
+            default: false
+        - name: location_flexible
+          in: query
+          description: Include candidates open to relocation
+          schema:
+            type: boolean
+            default: true
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: List of matching candidates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CandidateMatch'
+                  meta:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not authorized to view candidates for this job
+        '404':
+          description: Job not found
+
+  /matches/calculate-net-benefit:
+    post:
+      tags:
+        - Matches
+      summary: Calculate net compensation benefit
+      description: |
+        Calculates the net compensation benefit when comparing salary offers
+        in different locations, taking into account cost-of-living differences,
+        taxes, and other location-specific factors.
+      operationId: calculateNetBenefit
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NetBenefitRequest'
+      responses:
+        '200':
+          description: Net benefit calculation results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetBenefitResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /cost-of-living/compare:
+    get:
+      tags:
+        - Cost of Living
+      summary: Compare cost of living between cities
+      description: |
+        Compares the cost of living between two or more cities across
+        various categories (housing, food, transportation, etc.).
+      operationId: compareCostOfLiving
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cities
+          in: query
+          required: true
+          description: Comma-separated list of city IDs to compare (2-5 cities)
+          schema:
+            type: string
+          example: "nyc,sf,austin"
+        - name: base_city
+          in: query
+          description: The base city for index comparison (default is first city in list)
+          schema:
+            type: string
+        - name: categories
+          in: query
+          description: Comma-separated list of categories to include
+          schema:
+            type: string
+            default: "all"
+          example: "housing,food,transportation"
+      responses:
+        '200':
+          description: Cost of living comparison
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CostOfLivingComparison'
+        '400':
+          description: Invalid city IDs or too many cities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /cost-of-living/cities:
+    get:
+      tags:
+        - Cost of Living
+      summary: List available cities
+      description: Returns a list of all cities with cost-of-living data available.
+      operationId: listCities
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: country
+          in: query
+          description: Filter by country code (ISO 3166-1 alpha-2)
+          schema:
+            type: string
+        - name: search
+          in: query
+          description: Search by city name
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: List of cities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CitySummary'
+                  meta:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /cost-of-living/cities/{city_id}:
+    get:
+      tags:
+        - Cost of Living
+      summary: Get city cost index
+      description: |
+        Returns detailed cost-of-living index data for a specific city,
+        including breakdowns by category and historical trends.
+      operationId: getCityCostIndex
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CityId'
+        - name: include_breakdown
+          in: query
+          description: Include detailed category breakdown
+          schema:
+            type: boolean
+            default: true
+        - name: include_trends
+          in: query
+          description: Include historical trend data (last 12 months)
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: City cost-of-living details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CityDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: City not found
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained via LinkedIn OAuth
+
+  parameters:
+    CandidateId:
+      name: candidate_id
+      in: path
+      required: true
+      description: Unique candidate identifier
+      schema:
+        type: string
+        format: uuid
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      description: Unique job identifier
+      schema:
+        type: string
+        format: uuid
+    CityId:
+      name: city_id
+      in: path
+      required: true
+      description: City identifier (slug format, e.g., "new-york-ny")
+      schema:
+        type: string
+        pattern: '^[a-z0-9-]+$'
+    Page:
+      name: page
+      in: query
+      description: Page number for pagination
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+    PerPage:
+      name: per_page
+      in: query
+      description: Number of items per page
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+
+  schemas:
+    JobMatch:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "Senior Backend Engineer"
+        company:
+          type: string
+          example: "TechCorp Inc."
+        location:
+          type: string
+          example: "San Francisco, CA"
+        is_remote:
+          type: boolean
+        salary_range:
+          type: object
+          properties:
+            min:
+              type: integer
+              example: 150000
+            max:
+              type: integer
+              example: 200000
+            currency:
+              type: string
+              default: "USD"
+        match_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Overall match score (0-100)
+        match_breakdown:
+          type: object
+          description: Breakdown of match score by category
+          properties:
+            skills:
+              type: integer
+            experience:
+              type: integer
+            assessment:
+              type: integer
+            culture:
+              type: integer
+        cost_adjusted_salary:
+          type: object
+          description: Salary adjusted for cost-of-living (if requested)
+          properties:
+            equivalent_in_base_city:
+              type: integer
+              description: Equivalent salary in candidate's current city
+            purchasing_power_index:
+              type: number
+              format: float
+        matched_skills:
+          type: array
+          items:
+            type: string
+          example: ["TypeScript", "Node.js", "PostgreSQL"]
+        missing_skills:
+          type: array
+          items:
+            type: string
+          example: ["Kubernetes"]
+        posted_at:
+          type: string
+          format: date-time
+
+    CandidateMatch:
+      type: object
+      properties:
+        candidate_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Jane Smith"
+        headline:
+          type: string
+          example: "Full Stack Developer with 5+ years experience"
+        location:
+          type: string
+          example: "Austin, TX"
+        open_to_relocation:
+          type: boolean
+        match_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Overall match score (0-100)
+        match_breakdown:
+          type: object
+          description: Breakdown of match score by category
+          properties:
+            skills:
+              type: integer
+            experience:
+              type: integer
+            assessment:
+              type: integer
+            culture:
+              type: integer
+        assessment_summary:
+          type: object
+          description: Summary of latest assessment results
+          properties:
+            overall_score:
+              type: integer
+            assessment_type:
+              type: string
+            completed_at:
+              type: string
+              format: date-time
+            dimensions:
+              type: object
+              additionalProperties:
+                type: integer
+        matched_skills:
+          type: array
+          items:
+            type: string
+        years_experience:
+          type: integer
+        expected_salary:
+          type: object
+          properties:
+            min:
+              type: integer
+            max:
+              type: integer
+            currency:
+              type: string
+
+    NetBenefitRequest:
+      type: object
+      required:
+        - current_location
+        - current_salary
+        - offers
+      properties:
+        current_location:
+          type: string
+          description: Current city ID
+          example: "austin-tx"
+        current_salary:
+          type: integer
+          description: Current annual salary in USD
+          example: 120000
+        offers:
+          type: array
+          description: List of job offers to compare
+          minItems: 1
+          maxItems: 10
+          items:
+            type: object
+            required:
+              - location
+              - salary
+            properties:
+              offer_id:
+                type: string
+                description: Optional identifier for the offer
+              location:
+                type: string
+                description: City ID for the offer location
+              salary:
+                type: integer
+                description: Offered annual salary in USD
+              signing_bonus:
+                type: integer
+                description: One-time signing bonus
+              equity_value:
+                type: integer
+                description: Annual equity value estimate
+              other_benefits:
+                type: integer
+                description: Value of other benefits (healthcare, 401k match, etc.)
+
+    NetBenefitResponse:
+      type: object
+      properties:
+        current_location:
+          $ref: '#/components/schemas/LocationSummary'
+        current_salary:
+          type: integer
+        current_effective_income:
+          type: integer
+          description: Current salary adjusted for local cost of living
+        offers:
+          type: array
+          items:
+            type: object
+            properties:
+              offer_id:
+                type: string
+              location:
+                $ref: '#/components/schemas/LocationSummary'
+              gross_compensation:
+                type: integer
+                description: Total compensation (salary + bonus + equity + benefits)
+              effective_income:
+                type: integer
+                description: Compensation adjusted for cost of living
+              net_benefit:
+                type: integer
+                description: Difference from current effective income
+              net_benefit_percentage:
+                type: number
+                format: float
+                description: Percentage change from current
+              cost_of_living_adjustment:
+                type: number
+                format: float
+                description: Cost of living index relative to current location
+              recommendation:
+                type: string
+                enum: [highly_favorable, favorable, neutral, unfavorable, highly_unfavorable]
+        summary:
+          type: object
+          properties:
+            best_offer_id:
+              type: string
+            best_net_benefit:
+              type: integer
+            analysis:
+              type: string
+              description: AI-generated analysis of the offers
+
+    LocationSummary:
+      type: object
+      properties:
+        city_id:
+          type: string
+        city_name:
+          type: string
+        country:
+          type: string
+        cost_of_living_index:
+          type: number
+          format: float
+
+    CostOfLivingComparison:
+      type: object
+      properties:
+        base_city:
+          $ref: '#/components/schemas/CitySummary'
+        comparison_cities:
+          type: array
+          items:
+            type: object
+            properties:
+              city:
+                $ref: '#/components/schemas/CitySummary'
+              overall_index:
+                type: number
+                format: float
+                description: Overall cost index relative to base (100 = same)
+              categories:
+                type: object
+                additionalProperties:
+                  type: object
+                  properties:
+                    index:
+                      type: number
+                      format: float
+                    difference_percentage:
+                      type: number
+                      format: float
+              salary_needed:
+                type: object
+                description: Salary needed to maintain same standard of living
+                properties:
+                  for_100k:
+                    type: integer
+                    description: Salary needed if earning $100k in base city
+
+    CitySummary:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "san-francisco-ca"
+        name:
+          type: string
+          example: "San Francisco"
+        state:
+          type: string
+          example: "CA"
+        country:
+          type: string
+          example: "US"
+        country_name:
+          type: string
+          example: "United States"
+        overall_index:
+          type: number
+          format: float
+          description: Overall cost of living index (100 = US average)
+          example: 179.5
+
+    CityDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        state:
+          type: string
+        country:
+          type: string
+        country_name:
+          type: string
+        overall_index:
+          type: number
+          format: float
+          description: Overall cost of living index (100 = US average)
+        last_updated:
+          type: string
+          format: date-time
+        breakdown:
+          type: object
+          description: Detailed breakdown by category (if requested)
+          properties:
+            housing:
+              $ref: '#/components/schemas/CategoryDetail'
+            food:
+              $ref: '#/components/schemas/CategoryDetail'
+            transportation:
+              $ref: '#/components/schemas/CategoryDetail'
+            healthcare:
+              $ref: '#/components/schemas/CategoryDetail'
+            utilities:
+              $ref: '#/components/schemas/CategoryDetail'
+            childcare:
+              $ref: '#/components/schemas/CategoryDetail'
+            entertainment:
+              $ref: '#/components/schemas/CategoryDetail'
+            taxes:
+              $ref: '#/components/schemas/CategoryDetail'
+        trends:
+          type: array
+          description: Historical trend data (if requested)
+          items:
+            type: object
+            properties:
+              month:
+                type: string
+                format: date
+              index:
+                type: number
+                format: float
+
+    CategoryDetail:
+      type: object
+      properties:
+        index:
+          type: number
+          format: float
+          description: Category index (100 = US average)
+        weight:
+          type: number
+          format: float
+          description: Weight in overall index calculation
+        examples:
+          type: array
+          description: Example prices for reference
+          items:
+            type: object
+            properties:
+              item:
+                type: string
+              price:
+                type: number
+                format: float
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: AUTH_TOKEN_MISSING
+              message: Authentication required
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+security:
+  - bearerAuth: []

@@ -1,0 +1,634 @@
+asyncapi: 3.0.0
+
+info:
+  title: Talent Mesh Signaling Protocol
+  version: 1.0.0
+  description: |
+    WebSocket-based signaling protocol for WebRTC session establishment
+    in Talent Mesh assessments. Supports up to 5 participants in a full mesh topology.
+
+    ## Connection Flow
+    1. Client connects to WebSocket endpoint with JWT token
+    2. Client sends `join_room` message
+    3. Server responds with `room_state` containing existing participants
+    4. Client exchanges SDP offers/answers with each peer
+    5. ICE candidates are relayed through the server
+    6. P2P connections established directly between peers
+
+  contact:
+    name: Talent Mesh Engineering
+    email: engineering@talentmesh.io
+
+  license:
+    name: Proprietary
+    url: https://talentmesh.io/terms
+
+servers:
+  production:
+    host: signaling.talentmesh.io
+    protocol: wss
+    description: Production WebSocket server (Rust/tokio)
+    security:
+      - $ref: '#/components/securitySchemes/bearerAuth'
+
+  development:
+    host: localhost:5001
+    protocol: ws
+    description: Local development server
+
+defaultContentType: application/json
+
+channels:
+  signaling:
+    address: /ws/signaling
+    description: |
+      WebSocket channel for all signaling messages.
+      All messages are JSON-encoded with a common envelope.
+    messages:
+      joinRoom:
+        $ref: '#/components/messages/JoinRoom'
+      leaveRoom:
+        $ref: '#/components/messages/LeaveRoom'
+      roomState:
+        $ref: '#/components/messages/RoomState'
+      participantJoined:
+        $ref: '#/components/messages/ParticipantJoined'
+      participantLeft:
+        $ref: '#/components/messages/ParticipantLeft'
+      sdpOffer:
+        $ref: '#/components/messages/SDPOffer'
+      sdpAnswer:
+        $ref: '#/components/messages/SDPAnswer'
+      iceCandidate:
+        $ref: '#/components/messages/ICECandidate'
+      aiControl:
+        $ref: '#/components/messages/AIControl'
+      error:
+        $ref: '#/components/messages/Error'
+      ping:
+        $ref: '#/components/messages/Ping'
+      pong:
+        $ref: '#/components/messages/Pong'
+
+operations:
+  joinRoom:
+    action: send
+    channel:
+      $ref: '#/channels/signaling'
+    summary: Join an assessment room
+    description: |
+      Sent by a participant to join a room. The server will respond
+      with `room_state` containing existing participants.
+    messages:
+      - $ref: '#/components/messages/JoinRoom'
+
+  leaveRoom:
+    action: send
+    channel:
+      $ref: '#/channels/signaling'
+    summary: Leave the current room
+    description: Cleanly disconnect from the room
+    messages:
+      - $ref: '#/components/messages/LeaveRoom'
+
+  receiveRoomState:
+    action: receive
+    channel:
+      $ref: '#/channels/signaling'
+    summary: Receive room state after joining
+    messages:
+      - $ref: '#/components/messages/RoomState'
+
+  receiveParticipantJoined:
+    action: receive
+    channel:
+      $ref: '#/channels/signaling'
+    summary: Notification when a new participant joins
+    messages:
+      - $ref: '#/components/messages/ParticipantJoined'
+
+  receiveParticipantLeft:
+    action: receive
+    channel:
+      $ref: '#/channels/signaling'
+    summary: Notification when a participant leaves
+    messages:
+      - $ref: '#/components/messages/ParticipantLeft'
+
+  sendSdpOffer:
+    action: send
+    channel:
+      $ref: '#/channels/signaling'
+    summary: Send SDP offer to a peer
+    messages:
+      - $ref: '#/components/messages/SDPOffer'
+
+  receiveSdpOffer:
+    action: receive
+    channel:
+      $ref: '#/channels/signaling'
+    summary: Receive SDP offer from a peer
+    messages:
+      - $ref: '#/components/messages/SDPOffer'
+
+  sendSdpAnswer:
+    action: send
+    channel:
+      $ref: '#/channels/signaling'
+    summary: Send SDP answer to a peer
+    messages:
+      - $ref: '#/components/messages/SDPAnswer'
+
+  receiveSdpAnswer:
+    action: receive
+    channel:
+      $ref: '#/channels/signaling'
+    summary: Receive SDP answer from a peer
+    messages:
+      - $ref: '#/components/messages/SDPAnswer'
+
+  sendIceCandidate:
+    action: send
+    channel:
+      $ref: '#/channels/signaling'
+    summary: Send ICE candidate to a peer
+    messages:
+      - $ref: '#/components/messages/ICECandidate'
+
+  receiveIceCandidate:
+    action: receive
+    channel:
+      $ref: '#/channels/signaling'
+    summary: Receive ICE candidate from a peer
+    messages:
+      - $ref: '#/components/messages/ICECandidate'
+
+  sendAiControl:
+    action: send
+    channel:
+      $ref: '#/channels/signaling'
+    summary: Send AI control command (human interviewers only)
+    messages:
+      - $ref: '#/components/messages/AIControl'
+
+  receiveError:
+    action: receive
+    channel:
+      $ref: '#/channels/signaling'
+    summary: Receive error message from server
+    messages:
+      - $ref: '#/components/messages/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT token obtained from Auth Service.
+        Include in WebSocket connection as query parameter: ?token=<jwt>
+
+  messages:
+    JoinRoom:
+      name: join_room
+      title: Join Room
+      summary: Request to join an assessment room
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/JoinRoomPayload'
+      examples:
+        - name: Candidate joining
+          payload:
+            type: join_room
+            room_id: "550e8400-e29b-41d4-a716-446655440000"
+            sender_id: "candidate-123"
+            timestamp: "2026-01-07T12:00:00Z"
+            payload:
+              participant_type: candidate
+              display_name: "John Doe"
+              capabilities:
+                video: true
+                audio: true
+                screen_share: true
+
+    LeaveRoom:
+      name: leave_room
+      title: Leave Room
+      summary: Notify server of leaving the room
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/LeaveRoomPayload'
+
+    RoomState:
+      name: room_state
+      title: Room State
+      summary: Current state of the room (sent after joining)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/RoomStatePayload'
+      examples:
+        - name: Room with AI agent
+          payload:
+            type: room_state
+            room_id: "550e8400-e29b-41d4-a716-446655440000"
+            sender_id: "server"
+            timestamp: "2026-01-07T12:00:01Z"
+            payload:
+              participants:
+                - id: "ai-agent-1"
+                  type: ai_agent
+                  display_name: "AI Interviewer"
+                  joined_at: "2026-01-07T11:59:00Z"
+                  is_muted: false
+                  has_video: false
+              session_status: waiting
+              ai_status: active
+              recording_status: recording
+
+    ParticipantJoined:
+      name: participant_joined
+      title: Participant Joined
+      summary: Notification when a new participant joins the room
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ParticipantJoinedPayload'
+
+    ParticipantLeft:
+      name: participant_left
+      title: Participant Left
+      summary: Notification when a participant leaves the room
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ParticipantLeftPayload'
+
+    SDPOffer:
+      name: sdp_offer
+      title: SDP Offer
+      summary: WebRTC SDP offer for establishing peer connection
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SDPPayload'
+      examples:
+        - name: SDP Offer
+          payload:
+            type: sdp_offer
+            room_id: "550e8400-e29b-41d4-a716-446655440000"
+            sender_id: "ai-agent-1"
+            timestamp: "2026-01-07T12:00:02Z"
+            payload:
+              target_id: "candidate-123"
+              sdp:
+                type: offer
+                sdp: "v=0\r\no=- 123456 2 IN IP4 127.0.0.1\r\n..."
+
+    SDPAnswer:
+      name: sdp_answer
+      title: SDP Answer
+      summary: WebRTC SDP answer in response to an offer
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SDPPayload'
+
+    ICECandidate:
+      name: ice_candidate
+      title: ICE Candidate
+      summary: ICE candidate for NAT traversal
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ICECandidatePayload'
+      examples:
+        - name: ICE Candidate
+          payload:
+            type: ice_candidate
+            room_id: "550e8400-e29b-41d4-a716-446655440000"
+            sender_id: "candidate-123"
+            timestamp: "2026-01-07T12:00:03Z"
+            payload:
+              target_id: "ai-agent-1"
+              candidate:
+                candidate: "candidate:1 1 UDP 2130706431 192.168.1.100 54321 typ host"
+                sdpMid: "0"
+                sdpMLineIndex: 0
+
+    AIControl:
+      name: ai_control
+      title: AI Control
+      summary: Control commands for AI agent (pause, resume, mute)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AIControlPayload'
+      examples:
+        - name: Pause AI
+          payload:
+            type: ai_control
+            room_id: "550e8400-e29b-41d4-a716-446655440000"
+            sender_id: "human-interviewer-1"
+            timestamp: "2026-01-07T12:05:00Z"
+            payload:
+              command: pause
+              issued_by: "human-interviewer-1"
+
+    Error:
+      name: error
+      title: Error
+      summary: Error message from server
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ErrorPayload'
+
+    Ping:
+      name: ping
+      title: Ping
+      summary: Keep-alive ping (client to server)
+      contentType: application/json
+      payload:
+        type: object
+        properties:
+          type:
+            type: string
+            const: ping
+          timestamp:
+            type: string
+            format: date-time
+
+    Pong:
+      name: pong
+      title: Pong
+      summary: Keep-alive pong (server to client)
+      contentType: application/json
+      payload:
+        type: object
+        properties:
+          type:
+            type: string
+            const: pong
+          timestamp:
+            type: string
+            format: date-time
+
+  schemas:
+    MessageEnvelope:
+      type: object
+      description: Common envelope for all signaling messages
+      required:
+        - type
+        - room_id
+        - sender_id
+        - timestamp
+        - payload
+      properties:
+        type:
+          type: string
+          description: Message type
+          enum:
+            - join_room
+            - leave_room
+            - room_state
+            - participant_joined
+            - participant_left
+            - sdp_offer
+            - sdp_answer
+            - ice_candidate
+            - ai_control
+            - error
+            - ping
+            - pong
+        room_id:
+          type: string
+          format: uuid
+          description: Assessment room ID
+        sender_id:
+          type: string
+          description: Participant ID of the sender
+        timestamp:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp
+        payload:
+          type: object
+          description: Message-specific payload
+
+    JoinRoomPayload:
+      allOf:
+        - $ref: '#/components/schemas/MessageEnvelope'
+        - type: object
+          properties:
+            payload:
+              type: object
+              required:
+                - participant_type
+                - display_name
+                - capabilities
+              properties:
+                participant_type:
+                  type: string
+                  enum: [candidate, ai_agent, human_interviewer]
+                  description: Type of participant
+                display_name:
+                  type: string
+                  description: Display name for the participant
+                capabilities:
+                  type: object
+                  properties:
+                    video:
+                      type: boolean
+                    audio:
+                      type: boolean
+                    screen_share:
+                      type: boolean
+
+    LeaveRoomPayload:
+      allOf:
+        - $ref: '#/components/schemas/MessageEnvelope'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  enum: [normal, error, timeout]
+                  default: normal
+
+    RoomStatePayload:
+      allOf:
+        - $ref: '#/components/schemas/MessageEnvelope'
+        - type: object
+          properties:
+            payload:
+              type: object
+              required:
+                - participants
+                - session_status
+                - ai_status
+                - recording_status
+              properties:
+                participants:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Participant'
+                session_status:
+                  type: string
+                  enum: [waiting, in_progress, paused, completed]
+                ai_status:
+                  type: string
+                  enum: [active, paused, muted, offline]
+                recording_status:
+                  type: string
+                  enum: [recording, paused, stopped]
+
+    Participant:
+      type: object
+      required:
+        - id
+        - type
+        - display_name
+        - joined_at
+      properties:
+        id:
+          type: string
+          description: Unique participant ID
+        type:
+          type: string
+          enum: [candidate, ai_agent, human_interviewer]
+        display_name:
+          type: string
+        joined_at:
+          type: string
+          format: date-time
+        is_muted:
+          type: boolean
+          default: false
+        has_video:
+          type: boolean
+          default: false
+
+    ParticipantJoinedPayload:
+      allOf:
+        - $ref: '#/components/schemas/MessageEnvelope'
+        - type: object
+          properties:
+            payload:
+              $ref: '#/components/schemas/Participant'
+
+    ParticipantLeftPayload:
+      allOf:
+        - $ref: '#/components/schemas/MessageEnvelope'
+        - type: object
+          properties:
+            payload:
+              type: object
+              required:
+                - participant_id
+              properties:
+                participant_id:
+                  type: string
+                reason:
+                  type: string
+                  enum: [normal, error, timeout, kicked]
+
+    SDPPayload:
+      allOf:
+        - $ref: '#/components/schemas/MessageEnvelope'
+        - type: object
+          properties:
+            payload:
+              type: object
+              required:
+                - target_id
+                - sdp
+              properties:
+                target_id:
+                  type: string
+                  description: Recipient participant ID
+                sdp:
+                  type: object
+                  description: RTCSessionDescriptionInit
+                  required:
+                    - type
+                    - sdp
+                  properties:
+                    type:
+                      type: string
+                      enum: [offer, answer]
+                    sdp:
+                      type: string
+                      description: SDP string
+
+    ICECandidatePayload:
+      allOf:
+        - $ref: '#/components/schemas/MessageEnvelope'
+        - type: object
+          properties:
+            payload:
+              type: object
+              required:
+                - target_id
+                - candidate
+              properties:
+                target_id:
+                  type: string
+                  description: Recipient participant ID
+                candidate:
+                  type: object
+                  description: RTCIceCandidateInit
+                  properties:
+                    candidate:
+                      type: string
+                      description: ICE candidate string
+                    sdpMid:
+                      type: string
+                    sdpMLineIndex:
+                      type: integer
+
+    AIControlPayload:
+      allOf:
+        - $ref: '#/components/schemas/MessageEnvelope'
+        - type: object
+          properties:
+            payload:
+              type: object
+              required:
+                - command
+                - issued_by
+              properties:
+                command:
+                  type: string
+                  enum: [pause, resume, mute, unmute, end_session]
+                  description: |
+                    - pause: Stop AI from asking questions
+                    - resume: Continue AI-led assessment
+                    - mute: Mute AI audio output
+                    - unmute: Unmute AI audio output
+                    - end_session: End the assessment
+                issued_by:
+                  type: string
+                  description: ID of the human interviewer issuing the command
+
+    ErrorPayload:
+      allOf:
+        - $ref: '#/components/schemas/MessageEnvelope'
+        - type: object
+          properties:
+            payload:
+              type: object
+              required:
+                - code
+                - message
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - ROOM_NOT_FOUND
+                    - ROOM_FULL
+                    - UNAUTHORIZED
+                    - INVALID_MESSAGE
+                    - PEER_NOT_FOUND
+                    - INTERNAL_ERROR
+                message:
+                  type: string
+                  description: Human-readable error message
+                details:
+                  type: object
+                  description: Additional error details

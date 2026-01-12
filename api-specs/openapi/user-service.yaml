@@ -1,0 +1,468 @@
+openapi: 3.0.3
+info:
+  title: Talent Mesh User Service API
+  description: User profile and CV management service
+  version: 1.0.0
+
+servers:
+  - url: https://api.talentmesh.io/api/v1
+    description: Production
+  - url: http://localhost:3002/api/v1
+    description: Development
+
+tags:
+  - name: Profile
+    description: User profile management
+  - name: CV
+    description: CV upload and analysis
+  - name: Skills
+    description: Skills and verification
+
+paths:
+  /users/{user_id}:
+    get:
+      tags:
+        - Profile
+      summary: Get user profile
+      operationId: getProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '404':
+          description: User not found
+    put:
+      tags:
+        - Profile
+      summary: Update user profile
+      operationId: updateProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+
+  /users/{user_id}/cv:
+    post:
+      tags:
+        - CV
+      summary: Upload CV
+      operationId: uploadCV
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '202':
+          description: CV uploaded, processing started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  analysis_id:
+                    type: string
+                    format: uuid
+
+  /users/{user_id}/cv/analysis:
+    get:
+      tags:
+        - CV
+      summary: Get CV analysis
+      operationId: getCVAnalysis
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: CV analysis results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CVAnalysis'
+        '404':
+          description: No CV uploaded
+
+  /users/{user_id}/linkedin/refresh:
+    post:
+      tags:
+        - Profile
+      summary: Refresh LinkedIn data
+      operationId: refreshLinkedIn
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: LinkedIn data refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkedInProfile'
+        '400':
+          description: LinkedIn not connected
+
+  /users/{user_id}/skills:
+    get:
+      tags:
+        - Skills
+      summary: Get user skills
+      operationId: getSkills
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User skills list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Skill'
+
+  /users/{user_id}/spider-map:
+    get:
+      tags:
+        - Skills
+      summary: Get spider map
+      operationId: getSpiderMap
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Spider map data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpiderMap'
+
+  /users/search:
+    get:
+      tags:
+        - Profile
+      summary: Search users
+      operationId: searchUsers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: skills
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+        - name: min_score
+          in: query
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserSummary'
+                  meta:
+                    $ref: '#/components/schemas/Pagination'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+    PerPage:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        default: 20
+        maximum: 100
+
+  schemas:
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        name:
+          type: string
+        headline:
+          type: string
+        location:
+          type: string
+        linkedin_connected:
+          type: boolean
+        cv_uploaded:
+          type: boolean
+        profile_completeness:
+          type: integer
+          minimum: 0
+          maximum: 100
+        experience:
+          type: array
+          items:
+            $ref: '#/components/schemas/Experience'
+        education:
+          type: array
+          items:
+            $ref: '#/components/schemas/Education'
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/Skill'
+        spider_map:
+          $ref: '#/components/schemas/SpiderMap'
+
+    ProfileUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        headline:
+          type: string
+        location:
+          type: string
+        phone:
+          type: string
+        skills:
+          type: array
+          items:
+            type: string
+
+    UserSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        headline:
+          type: string
+        top_skills:
+          type: array
+          items:
+            type: string
+        overall_score:
+          type: integer
+
+    Experience:
+      type: object
+      properties:
+        title:
+          type: string
+        company:
+          type: string
+        location:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        current:
+          type: boolean
+        description:
+          type: string
+
+    Education:
+      type: object
+      properties:
+        school:
+          type: string
+        degree:
+          type: string
+        field:
+          type: string
+        start_year:
+          type: integer
+        end_year:
+          type: integer
+
+    Skill:
+      type: object
+      properties:
+        name:
+          type: string
+        source:
+          type: string
+          enum: [linkedin, cv, manual, assessment]
+        verified:
+          type: boolean
+        verified_score:
+          type: integer
+        verified_at:
+          type: string
+          format: date-time
+
+    SpiderMap:
+      type: object
+      properties:
+        dimensions:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              score:
+                type: integer
+              assessed_at:
+                type: string
+                format: date-time
+              sub_dimensions:
+                type: object
+                additionalProperties:
+                  type: integer
+        completeness:
+          type: number
+
+    CVAnalysis:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [processing, completed, failed]
+        parsed:
+          type: object
+          properties:
+            name:
+              type: string
+            email:
+              type: string
+            experience:
+              type: array
+              items:
+                $ref: '#/components/schemas/Experience'
+            skills:
+              type: array
+              items:
+                type: string
+        analysis:
+          type: object
+          properties:
+            strengths:
+              type: array
+              items:
+                type: string
+            gaps:
+              type: array
+              items:
+                type: string
+            suggested_assessments:
+              type: array
+              items:
+                type: string
+            years_of_experience:
+              type: integer
+        analyzed_at:
+          type: string
+          format: date-time
+
+    LinkedInProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        headline:
+          type: string
+        location:
+          type: string
+        profile_url:
+          type: string
+        experience:
+          type: array
+          items:
+            $ref: '#/components/schemas/Experience'
+        skills:
+          type: array
+          items:
+            type: string
+        imported_at:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+security:
+  - bearerAuth: []

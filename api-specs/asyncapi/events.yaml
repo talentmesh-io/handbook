@@ -1,0 +1,503 @@
+asyncapi: 2.6.0
+info:
+  title: Talent Mesh Event API
+  version: 4.0.0
+  description: |
+    Asynchronous events published and consumed by Talent Mesh services via Redpanda (Kafka-compatible).
+    Updated for unified K3s cluster architecture with AI Agent Pods on Contabo VPS.
+
+servers:
+  production:
+    url: redpanda.talentmesh.io:9092
+    protocol: kafka
+    description: Production Redpanda (Kafka-compatible)
+  development:
+    url: localhost:9092
+    protocol: kafka
+    description: Local development Redpanda
+
+defaultContentType: application/json
+
+channels:
+  user-events:
+    description: Events related to user accounts and profiles
+    publish:
+      operationId: publishUserEvent
+      message:
+        oneOf:
+          - $ref: '#/components/messages/UserRegistered'
+          - $ref: '#/components/messages/UserProfileUpdated'
+          - $ref: '#/components/messages/UserCVAnalyzed'
+          - $ref: '#/components/messages/UserLinkedInImported'
+
+  assessment-events:
+    description: Events related to assessments
+    publish:
+      operationId: publishAssessmentEvent
+      message:
+        oneOf:
+          - $ref: '#/components/messages/AssessmentScheduled'
+          - $ref: '#/components/messages/AssessmentStarted'
+          - $ref: '#/components/messages/AssessmentCompleted'
+          - $ref: '#/components/messages/AssessmentScored'
+          - $ref: '#/components/messages/AssessmentAbandoned'
+
+  scheduling-events:
+    description: Events related to bookings and scheduling
+    publish:
+      operationId: publishSchedulingEvent
+      message:
+        oneOf:
+          - $ref: '#/components/messages/BookingCreated'
+          - $ref: '#/components/messages/BookingRescheduled'
+          - $ref: '#/components/messages/BookingCancelled'
+
+  pod-events:
+    description: Events related to AI Agent Pods (internal)
+    publish:
+      operationId: publishPodEvent
+      message:
+        oneOf:
+          - $ref: '#/components/messages/PodReady'
+          - $ref: '#/components/messages/PodBusy'
+          - $ref: '#/components/messages/PodDraining'
+          - $ref: '#/components/messages/PodTerminated'
+          - $ref: '#/components/messages/PodFailed'
+
+components:
+  messages:
+    # User Events
+    UserRegistered:
+      name: user.registered
+      title: User Registered
+      summary: A new user has registered
+      payload:
+        $ref: '#/components/schemas/UserRegisteredPayload'
+
+    UserProfileUpdated:
+      name: user.profile_updated
+      title: User Profile Updated
+      summary: User profile has been updated
+      payload:
+        $ref: '#/components/schemas/UserProfileUpdatedPayload'
+
+    UserCVAnalyzed:
+      name: user.cv_analyzed
+      title: User CV Analyzed
+      summary: User CV has been analyzed by LLM
+      payload:
+        $ref: '#/components/schemas/UserCVAnalyzedPayload'
+
+    UserLinkedInImported:
+      name: user.linkedin_imported
+      title: User LinkedIn Imported
+      summary: User LinkedIn profile data imported
+      payload:
+        $ref: '#/components/schemas/UserLinkedInImportedPayload'
+
+    # Assessment Events
+    AssessmentScheduled:
+      name: assessment.scheduled
+      title: Assessment Scheduled
+      summary: Assessment has been scheduled
+      payload:
+        $ref: '#/components/schemas/AssessmentScheduledPayload'
+
+    AssessmentStarted:
+      name: assessment.started
+      title: Assessment Started
+      summary: Assessment has started
+      payload:
+        $ref: '#/components/schemas/AssessmentStartedPayload'
+
+    AssessmentCompleted:
+      name: assessment.completed
+      title: Assessment Completed
+      summary: Assessment has been completed
+      payload:
+        $ref: '#/components/schemas/AssessmentCompletedPayload'
+
+    AssessmentScored:
+      name: assessment.scored
+      title: Assessment Scored
+      summary: Assessment scoring has completed
+      payload:
+        $ref: '#/components/schemas/AssessmentScoredPayload'
+
+    AssessmentAbandoned:
+      name: assessment.abandoned
+      title: Assessment Abandoned
+      summary: Assessment was abandoned by candidate
+      payload:
+        $ref: '#/components/schemas/AssessmentAbandonedPayload'
+
+    # Scheduling Events
+    BookingCreated:
+      name: booking.created
+      title: Booking Created
+      summary: Assessment booking created
+      payload:
+        $ref: '#/components/schemas/BookingCreatedPayload'
+
+    BookingRescheduled:
+      name: booking.rescheduled
+      title: Booking Rescheduled
+      summary: Assessment booking rescheduled
+      payload:
+        $ref: '#/components/schemas/BookingRescheduledPayload'
+
+    BookingCancelled:
+      name: booking.cancelled
+      title: Booking Cancelled
+      summary: Assessment booking cancelled
+      payload:
+        $ref: '#/components/schemas/BookingCancelledPayload'
+
+    # Pod Events
+    PodReady:
+      name: pod.ready
+      title: Pod Ready
+      summary: AI Agent Pod is ready for assessments
+      payload:
+        $ref: '#/components/schemas/PodEventPayload'
+
+    PodBusy:
+      name: pod.busy
+      title: Pod Busy
+      summary: AI Agent Pod is now busy with assessment
+      payload:
+        $ref: '#/components/schemas/PodBusyPayload'
+
+    PodDraining:
+      name: pod.draining
+      title: Pod Draining
+      summary: AI Agent Pod is draining before shutdown
+      payload:
+        $ref: '#/components/schemas/PodEventPayload'
+
+    PodTerminated:
+      name: pod.terminated
+      title: Pod Terminated
+      summary: AI Agent Pod has been terminated
+      payload:
+        $ref: '#/components/schemas/PodEventPayload'
+
+    PodFailed:
+      name: pod.failed
+      title: Pod Failed
+      summary: AI Agent Pod encountered an error
+      payload:
+        $ref: '#/components/schemas/PodFailedPayload'
+
+  schemas:
+    # Base Event Schema
+    BaseEvent:
+      type: object
+      required:
+        - event_id
+        - event_type
+        - timestamp
+        - source
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        schema_version:
+          type: string
+          default: "1.0"
+        timestamp:
+          type: string
+          format: date-time
+        source:
+          type: string
+        correlation_id:
+          type: string
+        causation_id:
+          type: string
+
+    # User Event Payloads
+    UserRegisteredPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                email:
+                  type: string
+                name:
+                  type: string
+                registration_method:
+                  type: string
+                  enum: [linkedin]
+                linkedin_id:
+                  type: string
+
+    UserProfileUpdatedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                updated_fields:
+                  type: array
+                  items:
+                    type: string
+
+    UserCVAnalyzedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                skills_extracted:
+                  type: array
+                  items:
+                    type: string
+                suggested_assessments:
+                  type: array
+                  items:
+                    type: string
+
+    UserLinkedInImportedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+                linkedin_id:
+                  type: string
+
+    # Assessment Event Payloads
+    AssessmentScheduledPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                assessment_id:
+                  type: string
+                  format: uuid
+                user_id:
+                  type: string
+                  format: uuid
+                organization_id:
+                  type: string
+                  format: uuid
+                type:
+                  type: string
+                scheduled_at:
+                  type: string
+                  format: date-time
+
+    AssessmentStartedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                assessment_id:
+                  type: string
+                  format: uuid
+                linkedin_id:
+                  type: string
+                pod_id:
+                  type: string
+                  format: uuid
+
+    AssessmentCompletedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                assessment_id:
+                  type: string
+                  format: uuid
+                user_id:
+                  type: string
+                  format: uuid
+                organization_id:
+                  type: string
+                  format: uuid
+                type:
+                  type: string
+                duration_seconds:
+                  type: integer
+                questions_answered:
+                  type: integer
+
+    AssessmentScoredPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                assessment_id:
+                  type: string
+                  format: uuid
+                user_id:
+                  type: string
+                  format: uuid
+                overall_score:
+                  type: integer
+                passed:
+                  type: boolean
+
+    AssessmentAbandonedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                assessment_id:
+                  type: string
+                  format: uuid
+                user_id:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+                  enum: [disconnected, timeout, user_left]
+                duration_seconds:
+                  type: integer
+
+    # Scheduling Event Payloads
+    BookingCreatedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                booking_id:
+                  type: string
+                  format: uuid
+                user_id:
+                  type: string
+                  format: uuid
+                scheduled_at:
+                  type: string
+                  format: date-time
+                assessment_type:
+                  type: string
+
+    BookingRescheduledPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                booking_id:
+                  type: string
+                  format: uuid
+                old_scheduled_at:
+                  type: string
+                  format: date-time
+                new_scheduled_at:
+                  type: string
+                  format: date-time
+                reschedule_count:
+                  type: integer
+
+    BookingCancelledPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                booking_id:
+                  type: string
+                  format: uuid
+                user_id:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+
+    # Pod Event Payloads
+    PodEventPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                pod_id:
+                  type: string
+                  format: uuid
+                k8s_pod_name:
+                  type: string
+
+    PodBusyPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                pod_id:
+                  type: string
+                  format: uuid
+                k8s_pod_name:
+                  type: string
+                assessment_id:
+                  type: string
+                  format: uuid
+
+    PodFailedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          properties:
+            payload:
+              type: object
+              properties:
+                pod_id:
+                  type: string
+                  format: uuid
+                k8s_pod_name:
+                  type: string
+                error:
+                  type: string
+                assessment_id:
+                  type: string
+                  format: uuid

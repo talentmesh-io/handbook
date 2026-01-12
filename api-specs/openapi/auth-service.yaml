@@ -1,0 +1,604 @@
+openapi: 3.0.3
+info:
+  title: Talent Mesh Auth Service API
+  description: |
+    Authentication and authorization service for Talent Mesh.
+
+    **Authentication Method:** LinkedIn OAuth 2.0 only.
+
+    ## Version History
+    - **2.0.0** (2026-01-03): Breaking change - Removed email/password authentication. LinkedIn OAuth is now the only authentication method.
+    - **1.0.0** (2025-01-01): Initial release with email/password and LinkedIn OAuth.
+  version: 2.0.0
+  contact:
+    name: API Support
+    email: api@talentmesh.io
+
+servers:
+  - url: https://api.talentmesh.io/api/v2
+    description: Production
+  - url: https://api.staging.talentmesh.io/api/v2
+    description: Staging
+  - url: http://localhost:3001/api/v2
+    description: Development
+
+tags:
+  - name: OAuth
+    description: LinkedIn OAuth authentication endpoints
+  - name: Session
+    description: Session management
+  - name: Organization
+    description: Organization management
+
+paths:
+  /auth/linkedin:
+    get:
+      tags:
+        - OAuth
+      summary: Initiate LinkedIn OAuth
+      description: |
+        Initiates the LinkedIn OAuth 2.0 flow. Returns the LinkedIn authorization URL
+        that the client should redirect the user to.
+      operationId: initiateLinkedInAuth
+      parameters:
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+          description: The URI to redirect to after LinkedIn authorization
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional state parameter for CSRF protection (recommended)
+      responses:
+        '200':
+          description: LinkedIn authorization URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authorization_url:
+                    type: string
+                    format: uri
+                    description: URL to redirect user to LinkedIn for authorization
+                  state:
+                    type: string
+                    description: State token for CSRF verification
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/linkedin/callback:
+    post:
+      tags:
+        - OAuth
+      summary: LinkedIn OAuth callback
+      description: |
+        Handles the LinkedIn OAuth callback. Exchanges the authorization code for
+        tokens and creates or updates the user account. This endpoint should be called
+        by the frontend after LinkedIn redirects back with the authorization code.
+      operationId: linkedinCallback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+                - redirect_uri
+              properties:
+                code:
+                  type: string
+                  description: Authorization code from LinkedIn
+                redirect_uri:
+                  type: string
+                  format: uri
+                  description: Redirect URI used in the authorization request (must match)
+                state:
+                  type: string
+                  description: State parameter for CSRF verification (if provided during initiation)
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid authorization code or state mismatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: INVALID_AUTH_CODE
+                  message: The authorization code is invalid or has expired
+        '401':
+          description: LinkedIn authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Session
+      summary: Refresh access token
+      description: Get new access token using refresh token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/logout:
+    post:
+      tags:
+        - Session
+      summary: Logout
+      description: Invalidate current session and optionally revoke all sessions
+      operationId: logout
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                all_sessions:
+                  type: boolean
+                  default: false
+                  description: If true, revoke all sessions for this user
+      responses:
+        '204':
+          description: Logged out successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags:
+        - Session
+      summary: Get current user
+      description: Get the authenticated user's profile
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/sessions:
+    get:
+      tags:
+        - Session
+      summary: List active sessions
+      description: Get all active sessions for the current user
+      operationId: listSessions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of active sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/sessions/{session_id}:
+    delete:
+      tags:
+        - Session
+      summary: Revoke a session
+      description: Revoke a specific session by ID
+      operationId: revokeSession
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '204':
+          description: Session revoked successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Session not found
+
+  /auth/organizations:
+    get:
+      tags:
+        - Organization
+      summary: List user organizations
+      description: Get all organizations the user belongs to
+      operationId: listOrganizations
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of organizations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Organization'
+    post:
+      tags:
+        - Organization
+      summary: Create organization
+      description: Create a new organization
+      operationId: createOrganization
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                slug:
+                  type: string
+                  pattern: '^[a-z0-9-]+$'
+      responses:
+        '201':
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '409':
+          description: Slug already taken
+
+  /auth/organizations/{org_id}:
+    get:
+      tags:
+        - Organization
+      summary: Get organization details
+      operationId: getOrganization
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      responses:
+        '200':
+          description: Organization details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '404':
+          description: Organization not found
+
+  /auth/organizations/{org_id}/members:
+    get:
+      tags:
+        - Organization
+      summary: List organization members
+      operationId: listMembers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      responses:
+        '200':
+          description: List of members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OrganizationMember'
+
+  /auth/organizations/{org_id}/invite:
+    post:
+      tags:
+        - Organization
+      summary: Invite member
+      description: |
+        Invite a new member to the organization. The invited user will receive
+        a notification and must authenticate via LinkedIn to join.
+      operationId: inviteMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/OrgId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum: [admin, member]
+                  default: member
+      responses:
+        '200':
+          description: Invitation sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invitation_id:
+                    type: string
+                    format: uuid
+                  expires_at:
+                    type: string
+                    format: date-time
+        '403':
+          description: Not authorized to invite
+        '409':
+          description: User is already a member
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained via LinkedIn OAuth
+
+  parameters:
+    OrgId:
+      name: org_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+            access_token:
+              type: string
+              description: JWT access token
+            refresh_token:
+              type: string
+              description: Refresh token for obtaining new access tokens
+            expires_in:
+              type: integer
+              description: Token expiration in seconds
+            is_new_user:
+              type: boolean
+              description: True if this is the user's first login (account was just created)
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        linkedin_id:
+          type: string
+          description: LinkedIn user ID
+        linkedin_profile_url:
+          type: string
+          format: uri
+          description: LinkedIn profile URL
+        avatar_url:
+          type: string
+          format: uri
+          description: Profile picture URL (from LinkedIn)
+        created_at:
+          type: string
+          format: date-time
+        last_login_at:
+          type: string
+          format: date-time
+        organizations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationSummary'
+
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        last_activity:
+          type: string
+          format: date-time
+        ip_address:
+          type: string
+        user_agent:
+          type: string
+        is_current:
+          type: boolean
+          description: True if this is the current session
+
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        member_count:
+          type: integer
+
+    OrganizationSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        role:
+          type: string
+
+    OrganizationMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        linkedin_profile_url:
+          type: string
+          format: uri
+        avatar_url:
+          type: string
+          format: uri
+        joined_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  message:
+                    type: string
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: AUTH_TOKEN_MISSING
+              message: Authentication required
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    RateLimited:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+security:
+  - bearerAuth: []

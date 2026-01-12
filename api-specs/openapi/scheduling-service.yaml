@@ -1,0 +1,401 @@
+openapi: 3.0.3
+info:
+  title: Talent Mesh Scheduling Service API
+  description: Slot availability and booking management
+  version: 1.0.0
+
+servers:
+  - url: https://api.talentmesh.io/api/v1
+    description: Production
+  - url: http://localhost:3004/api/v1
+    description: Development
+
+tags:
+  - name: Slots
+    description: Availability slots
+  - name: Bookings
+    description: Assessment bookings
+  - name: Queue
+    description: On-demand queue
+
+paths:
+  /scheduling/slots:
+    get:
+      tags:
+        - Slots
+      summary: Get available slots
+      operationId: getSlots
+      parameters:
+        - name: date_from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: assessment_type
+          in: query
+          schema:
+            type: string
+        - name: timezone
+          in: query
+          schema:
+            type: string
+            default: UTC
+      responses:
+        '200':
+          description: Available slots
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Slot'
+                  meta:
+                    type: object
+                    properties:
+                      timezone:
+                        type: string
+                      agent_capacity:
+                        type: integer
+
+  /scheduling/slots/availability:
+    get:
+      tags:
+        - Slots
+      summary: Check real-time availability
+      operationId: checkAvailability
+      responses:
+        '200':
+          description: Current availability
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available_now:
+                    type: boolean
+                  available_agents:
+                    type: integer
+                  next_available_slot:
+                    type: string
+                    format: date-time
+                  queue_length:
+                    type: integer
+
+  /scheduling/bookings:
+    get:
+      tags:
+        - Bookings
+      summary: List bookings
+      operationId: listBookings
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [scheduled, in_progress, completed, cancelled, no_show]
+        - name: user_id
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Bookings list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Booking'
+                  meta:
+                    $ref: '#/components/schemas/Pagination'
+    post:
+      tags:
+        - Bookings
+      summary: Create booking
+      operationId: createBooking
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingCreate'
+      responses:
+        '201':
+          description: Booking created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '409':
+          description: Slot no longer available
+
+  /scheduling/bookings/{booking_id}:
+    get:
+      tags:
+        - Bookings
+      summary: Get booking details
+      operationId: getBooking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Booking details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+    put:
+      tags:
+        - Bookings
+      summary: Reschedule booking
+      operationId: rescheduleBooking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - scheduled_at
+              properties:
+                scheduled_at:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: Booking rescheduled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          description: Cannot reschedule (too close or limit reached)
+    delete:
+      tags:
+        - Bookings
+      summary: Cancel booking
+      operationId: cancelBooking
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '204':
+          description: Booking cancelled
+        '400':
+          description: Cannot cancel (too close to start)
+
+  /scheduling/queue/join:
+    post:
+      tags:
+        - Queue
+      summary: Join on-demand queue
+      operationId: joinQueue
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - assessment_config_id
+              properties:
+                assessment_config_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Joined queue or started immediately
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/QueuePosition'
+                  - $ref: '#/components/schemas/Booking'
+
+  /scheduling/queue/position:
+    get:
+      tags:
+        - Queue
+      summary: Get queue position
+      operationId: getQueuePosition
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current queue position
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuePosition'
+        '404':
+          description: Not in queue
+
+  /scheduling/queue/leave:
+    delete:
+      tags:
+        - Queue
+      summary: Leave queue
+      operationId: leaveQueue
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Left queue
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    BookingId:
+      name: booking_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+    PerPage:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        default: 20
+
+  schemas:
+    Slot:
+      type: object
+      properties:
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        available:
+          type: boolean
+        capacity:
+          type: integer
+
+    Booking:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        assessment_config_id:
+          type: string
+          format: uuid
+        assessment_type:
+          type: string
+        scheduled_at:
+          type: string
+          format: date-time
+        duration_minutes:
+          type: integer
+        status:
+          type: string
+          enum: [scheduled, in_progress, completed, cancelled, no_show]
+        meeting_url:
+          type: string
+          format: uri
+        reschedule_count:
+          type: integer
+        can_reschedule:
+          type: boolean
+        can_cancel:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    BookingCreate:
+      type: object
+      required:
+        - assessment_config_id
+        - scheduled_at
+      properties:
+        assessment_config_id:
+          type: string
+          format: uuid
+        scheduled_at:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+
+    QueuePosition:
+      type: object
+      properties:
+        position:
+          type: integer
+        estimated_wait_minutes:
+          type: integer
+        assessment_config_id:
+          type: string
+          format: uuid
+        joined_at:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+security:
+  - bearerAuth: []
