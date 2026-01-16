@@ -62,13 +62,32 @@ This index provides a complete listing of all documentation in the TalentMesh ha
 
 ## Architecture Decision Records (ADRs)
 
-### Application ADRs
-
 | ADR | Title | Status |
 |-----|-------|--------|
+| [ADR-002](./adrs/ADR-002-polyglot-database-strategy.md) | Polyglot Database Strategy | Accepted |
+| [ADR-005](./adrs/ADR-005-whisper-cpp-stt.md) | Whisper.cpp STT | Accepted |
 | [ADR-006](./adrs/ADR-006-LINKEDIN-ONLY-AUTH.md) | LinkedIn Only Auth | Accepted |
+| [ADR-007](./adrs/ADR-007-event-driven-architecture.md) | Event Driven Architecture | Accepted |
 | [ADR-009](./adrs/ADR-009-CLAUDE-CLI-WRAPPER.md) | LLM Integration via OpenOva | Accepted |
 | [ADR-010](./adrs/ADR-010-WEBRTC-DIRECT-ASSESSMENT.md) | WebRTC Direct Assessment | Accepted |
+| [ADR-015](./adrs/ADR-015-piper-tts.md) | Piper TTS | Accepted |
+| [ADR-033](./adrs/ADR-033-DATABASE-CICD-MIGRATIONS.md) | Database CI/CD Migrations | Accepted |
+
+---
+
+## Security
+
+| Document | Description |
+|----------|-------------|
+| [Security Architecture](./security/SECURITY_ARCHITECTURE.md) | Authentication, authorization, data protection |
+
+---
+
+## Runbooks
+
+| Document | Description |
+|----------|-------------|
+| [Operations Runbook](./runbooks/RUNBOOK-OPERATIONS.md) | Service-specific operational procedures |
 
 ---
 
@@ -86,10 +105,12 @@ TalentMesh runs on the **OpenOva Platform**. For infrastructure, deployment, and
 
 | Resource | Description |
 |----------|-------------|
+| [OpenOva Index](https://github.com/openova-io/INDEX.md) | Complete documentation index |
 | [OpenOva Handbook](https://github.com/openova-io/handbook) | Platform documentation |
-| [LLM Gateway](https://github.com/openova-io/handbook/blob/main/services/LLM_GATEWAY.md) | LLM service specification |
-| [DNS Failover](https://github.com/openova-io/handbook/blob/main/technical/DNS_FAILOVER_SPEC.md) | High availability |
-| [Deployment Architecture](https://github.com/openova-io/handbook/blob/main/architecture/DEPLOYMENT_ARCHITECTURE.md) | K8s deployment |
+| [Platform Tech Stack](https://github.com/openova-io/handbook/blob/main/docs/specs/SPEC-PLATFORM-TECH-STACK.md) | Technology stack |
+| [LLM Gateway](https://github.com/openova-io/handbook/blob/main/docs/specs/SPEC-LLM-GATEWAY.md) | LLM service specification |
+| [DNS Failover](https://github.com/openova-io/handbook/blob/main/docs/specs/SPEC-DNS-FAILOVER.md) | High availability |
+| [Platform Runbook](https://github.com/openova-io/handbook/blob/main/docs/runbooks/RUNBOOK-PLATFORM.md) | Platform operations |
 
 ---
 
